@@ -32,11 +32,11 @@ docker-compose up --build
 
 Isso inicia PostgreSQL, Redis, RabbitMQ e a aplicação. As migrations do Prisma rodam automaticamente no startup do container.
 
-| Serviço | URL |
-|---|---|
-| API | http://localhost:3000 |
-| Swagger | http://localhost:3000/api-docs |
-| Health Check | http://localhost:3000/health |
+| Serviço             | URL                                             |
+| ------------------- | ----------------------------------------------- |
+| API                 | http://localhost:3000                           |
+| Swagger             | http://localhost:3000/api-docs                  |
+| Health Check        | http://localhost:3000/health                    |
 | RabbitMQ Management | http://localhost:15672 (cinema / cinema_secret) |
 
 ### Popular dados iniciais
@@ -47,21 +47,23 @@ O seed cria 2 usuários e 3 sessões de cinema (32 assentos cada). Roda automati
 npm run seed
 ```
 
-| Usuário | Email | Senha |
-|---|---|---|
-| Alice | alice@email.com | 123456 |
-| Bob | bob@email.com | 123456 |
+| Usuário | Email           | Senha  |
+| ------- | --------------- | ------ |
+| Alice   | alice@email.com | 123456 |
+| Bob     | bob@email.com   | 123456 |
 
-| Sessão | Sala | Horário | Preço |
-|---|---|---|---|
+| Sessão               | Sala   | Horário          | Preço    |
+| -------------------- | ------ | ---------------- | -------- |
 | Vingadores: Ultimato | Sala 1 | 10/02/2026 19:00 | R$ 25,00 |
 | Matrix Resurrections | Sala 2 | 10/02/2026 21:00 | R$ 30,00 |
-| Interstellar | Sala 3 | 11/02/2026 15:00 | R$ 20,00 |
+| Interstellar         | Sala 3 | 11/02/2026 15:00 | R$ 20,00 |
 
 ### Executar testes
 
 ```bash
 npm run test
+npm run test:cov
+npm run test:e2e  
 ```
 
 ## Estratégias Implementadas
@@ -244,19 +246,22 @@ curl http://localhost:3000/health
 
 5. **Hybrid application (HTTP + RabbitMQ)** — A app sobe como servidor HTTP e consumer RabbitMQ no mesmo processo via `startAllMicroservices()`. Um único container faz tudo, simplificando deploy e operação sem abrir mão do processamento assíncrono.
 
-## Limitações Conhecidas
+## Diferenciais Implementados
 
-- **Testes** — Não foram implementados testes unitários ou de integração além do spec básico. Com mais tempo, priorizaria testes no `ReservationService` (mock do Redlock + repository) e um e2e simulando concorrência real com `Promise.all`.
+- **Testes unitários (72% coverage)** — 19 suítes / 78 testes cobrindo services, controllers, repositories, producers, consumers, guards, filters e interceptors
+- **Teste de concorrência e2e** — Simula N usuários disputando o mesmo assento simultaneamente via `Promise.allSettled`, valida que exatamente 1 reserva é criada e o restante recebe 409
+- **Rate Limiting** — `ThrottlerGuard` global (60 req/min por IP) via `@nestjs/throttler`
+- **Dead Letter Queue** — Consumer dedicado na fila `cinema_events.dlq` que loga mensagens não processáveis (origem, motivo, payload)
+- **Retry com exponential backoff** — Decorator `@Retry(maxAttempts, baseDelay)` aplicado em todos os consumers RabbitMQ. Delay calculado como `baseDelay * 2^attempt + jitter`. Após esgotar tentativas, a mensagem é enviada para a DLQ via `nack(msg, false, false)`
+- **Swagger** — Documentação interativa completa em `/api-docs`
+
+## Limitações Conhecidas
 
 - **Precisão da expiração** — O cron roda a cada 10 segundos, então uma reserva pode levar até ~40s para expirar (30s de TTL + 10s do intervalo do cron). Em produção, Redis keyspace notifications ou um scheduler mais granular resolveriam.
 
-- **Retry nos producers** — Se o `emit` para o RabbitMQ falhar, a exceção sobe para o caller. Não há retry com backoff implementado.
-
 ## Melhorias Futuras
 
-- **Testes de concorrência** — `Promise.all` com N requests simultâneos para validar que apenas um consegue reservar o mesmo assento
 - **Redis keyspace notifications** — Expiração instantânea de reservas sem depender de polling via cron
-- **Retry com exponential backoff** — Nos producers RabbitMQ para resiliência em falhas temporárias
 - **WebSocket** — Notificar clientes em tempo real sobre mudanças de disponibilidade de assentos
 - **Cache layer** — Servir `GET /sessions/:id/seats/available` direto do Redis, invalidando via consumers
 - **Métricas** — Prometheus + Grafana para monitorar filas, latência e taxa de erros
