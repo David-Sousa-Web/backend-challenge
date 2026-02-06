@@ -113,6 +113,12 @@ export class ReservationService {
       seatIds: cancelled.reservationSeats.map((rs) => rs.seatId),
     });
 
+    await this.reservationProducer.emitSeatReleased({
+      sessionId: cancelled.sessionId,
+      seatIds: cancelled.reservationSeats.map((rs) => rs.seatId),
+      reason: 'cancelled',
+    });
+
     return cancelled;
   }
 
@@ -134,17 +140,25 @@ export class ReservationService {
 
   @Cron(CronExpression.EVERY_10_SECONDS)
   async handleExpiredReservations() {
-    const expiredIds =
+    const expiredReservations =
       await this.reservationRepository.expirePendingReservations();
 
-    if (expiredIds.length > 0) {
+    if (expiredReservations.length > 0) {
       this.logger.log(
-        `${expiredIds.length} reserva(s) expirada(s) e assentos liberados`,
+        `${expiredReservations.length} reserva(s) expirada(s) e assentos liberados`,
       );
 
       await this.reservationProducer.emitReservationExpired({
-        reservationIds: expiredIds,
+        reservationIds: expiredReservations.map((r) => r.reservationId),
       });
+
+      for (const expired of expiredReservations) {
+        await this.reservationProducer.emitSeatReleased({
+          sessionId: expired.sessionId,
+          seatIds: expired.seatIds,
+          reason: 'expired',
+        });
+      }
     }
   }
 }

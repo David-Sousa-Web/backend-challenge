@@ -30,6 +30,12 @@ export interface CreateReservationData {
   idempotencyKey?: string;
 }
 
+export interface ExpiredReservationData {
+  reservationId: string;
+  sessionId: string;
+  seatIds: string[];
+}
+
 export abstract class ReservationRepository {
   abstract createWithLock(
     data: CreateReservationData,
@@ -40,5 +46,5 @@ export abstract class ReservationRepository {
   ): Promise<ReservationWithSeats | null>;
   abstract findByUserId(userId: string): Promise<ReservationEntity[]>;
   abstract cancel(id: string): Promise<ReservationWithSeats>;
-  abstract expirePendingReservations(): Promise<string[]>;
+  abstract expirePendingReservations(): Promise<ExpiredReservationData[]>;
 }

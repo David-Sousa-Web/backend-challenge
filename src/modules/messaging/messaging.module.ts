@@ -6,6 +6,7 @@ import { ReservationProducer } from './producers/reservation.producer';
 import { PaymentProducer } from './producers/payment.producer';
 import { ReservationConsumer } from './consumers/reservation.consumer';
 import { PaymentConsumer } from './consumers/payment.consumer';
+import { SeatConsumer } from './consumers/seat.consumer';
 import { DlqConsumer } from './consumers/dlq.consumer';
 
 @Global()
@@ -29,7 +30,12 @@ import { DlqConsumer } from './consumers/dlq.consumer';
       },
     ]),
   ],
-  controllers: [ReservationConsumer, PaymentConsumer, DlqConsumer],
+  controllers: [
+    ReservationConsumer,
+    PaymentConsumer,
+    SeatConsumer,
+    DlqConsumer,
+  ],
   providers: [ReservationProducer, PaymentProducer],
   exports: [ReservationProducer, PaymentProducer],
 })

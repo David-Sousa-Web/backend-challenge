@@ -48,4 +48,17 @@ export class ReservationProducer {
       `Evento ${RABBITMQ_QUEUES.RESERVATION_CANCELLED} emitido: ${payload.reservationId}`,
     );
   }
+
+  async emitSeatReleased(payload: {
+    sessionId: string;
+    seatIds: string[];
+    reason: 'cancelled' | 'expired';
+  }) {
+    await lastValueFrom(
+      this.client.emit(RABBITMQ_QUEUES.SEAT_RELEASED, payload),
+    );
+    this.logger.log(
+      `Evento ${RABBITMQ_QUEUES.SEAT_RELEASED} emitido: ${payload.seatIds.length} assento(s) liberado(s) [${payload.reason}]`,
+    );
+  }
 }

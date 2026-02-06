@@ -106,11 +106,14 @@ describe('PrismaReservationRepository', () => {
       prisma.$transaction.mockImplementation(async (cb: Function) => {
         const tx = {
           reservation: {
-            findMany: jest.fn().mockResolvedValue([{ id: 'res-1' }]),
+            findMany: jest.fn().mockResolvedValue([
+              {
+                id: 'res-1',
+                sessionId: 'session-1',
+                reservationSeats: [{ seatId: 'seat-1' }],
+              },
+            ]),
             updateMany: jest.fn(),
-          },
-          reservationSeat: {
-            findMany: jest.fn().mockResolvedValue([{ seatId: 'seat-1' }]),
           },
           seat: { updateMany: jest.fn() },
         };
@@ -119,7 +122,13 @@ describe('PrismaReservationRepository', () => {
 
       const result = await repository.expirePendingReservations();
 
-      expect(result).toEqual(['res-1']);
+      expect(result).toEqual([
+        {
+          reservationId: 'res-1',
+          sessionId: 'session-1',
+          seatIds: ['seat-1'],
+        },
+      ]);
     });
 
     it('should return empty array if no expired reservations', async () => {

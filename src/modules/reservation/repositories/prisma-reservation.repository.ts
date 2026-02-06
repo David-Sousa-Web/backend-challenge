@@ -9,6 +9,7 @@ import {
   ReservationEntity,
   ReservationWithSeats,
   CreateReservationData,
+  ExpiredReservationData,
 } from './reservation.repository';
 
 @Injectable()
@@ -127,11 +128,15 @@ export class PrismaReservationRepository implements ReservationRepository {
     });
   }
 
-  async expirePendingReservations(): Promise<string[]> {
+  async expirePendingReservations(): Promise<ExpiredReservationData[]> {
     return this.prisma.$transaction(async (tx) => {
       const expired = await tx.reservation.findMany({
         where: { status: 'PENDING', expiresAt: { lt: new Date() } },
-        select: { id: true },
+        select: {
+          id: true,
+          sessionId: true,
+          reservationSeats: { select: { seatId: true } },
+        },
       });
 
       if (expired.length === 0) return [];
@@ -143,19 +148,22 @@ export class PrismaReservationRepository implements ReservationRepository {
         data: { status: 'EXPIRED' },
       });
 
-      const seats = await tx.reservationSeat.findMany({
-        where: { reservationId: { in: ids } },
-        select: { seatId: true },
-      });
+      const allSeatIds = expired.flatMap((r) =>
+        r.reservationSeats.map((rs) => rs.seatId),
+      );
 
-      if (seats.length > 0) {
+      if (allSeatIds.length > 0) {
         await tx.seat.updateMany({
-          where: { id: { in: seats.map((s) => s.seatId) } },
+          where: { id: { in: allSeatIds } },
           data: { status: 'AVAILABLE' },
         });
       }
 
-      return ids;
+      return expired.map((r) => ({
+        reservationId: r.id,
+        sessionId: r.sessionId,
+        seatIds: r.reservationSeats.map((rs) => rs.seatId),
+      }));
     });
   }
 }
