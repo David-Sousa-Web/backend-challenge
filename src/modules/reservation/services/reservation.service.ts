@@ -14,6 +14,7 @@ import { env } from '../../../config/env.validation';
 import { ReservationRepository } from '../repositories/reservation.repository';
 import { ReservationProducer } from '../../messaging/producers/reservation.producer';
 import { CreateReservationDto } from '../dtos/create-reservation.dto';
+import { SessionRepository } from '../../session/repositories/session.repository';
 
 @Injectable()
 export class ReservationService {
@@ -23,6 +24,7 @@ export class ReservationService {
   constructor(
     private readonly reservationRepository: ReservationRepository,
     private readonly reservationProducer: ReservationProducer,
+    private readonly sessionRepository: SessionRepository,
     @Inject(REDIS_CLIENT) redis: Redis,
   ) {
     this.redlock = new Redlock([redis], {
@@ -42,6 +44,13 @@ export class ReservationService {
         await this.reservationRepository.findByIdempotencyKey(idempotencyKey);
 
       if (existing) return existing;
+    }
+
+    const session = await this.sessionRepository.findById(dto.sessionId);
+    if (!session) {
+      throw new NotFoundException(
+        `Sessão com ID ${dto.sessionId} não encontrada`,
+      );
     }
 
     const lockKey = `lock:session:${dto.sessionId}`;

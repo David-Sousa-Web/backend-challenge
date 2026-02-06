@@ -7,6 +7,7 @@ import { Test } from '@nestjs/testing';
 import { ReservationService } from '../../../src/modules/reservation/services/reservation.service';
 import { ReservationRepository } from '../../../src/modules/reservation/repositories/reservation.repository';
 import { ReservationProducer } from '../../../src/modules/messaging/producers/reservation.producer';
+import { SessionRepository } from '../../../src/modules/session/repositories/session.repository';
 import { REDIS_CLIENT } from '../../../src/redis/redis.module';
 
 jest.mock('redlock', () => {
@@ -22,6 +23,7 @@ describe('ReservationService', () => {
   let service: ReservationService;
   let repo: jest.Mocked<ReservationRepository>;
   let producer: jest.Mocked<ReservationProducer>;
+  let sessionRepo: jest.Mocked<SessionRepository>;
 
   const mockReservation = {
     id: 'res-1',
@@ -68,27 +70,46 @@ describe('ReservationService', () => {
           provide: REDIS_CLIENT,
           useValue: {},
         },
+        {
+          provide: SessionRepository,
+          useValue: {
+            findById: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get(ReservationService);
     repo = module.get(ReservationRepository);
     producer = module.get(ReservationProducer);
+    sessionRepo = module.get(SessionRepository);
   });
 
   describe('create', () => {
     const dto = { sessionId: 'session-1', seatIds: ['seat-1'] };
+    const mockSession = { id: 'session-1', movieTitle: 'Test', room: 'A', startsAt: new Date(), ticketPriceInCents: 2500, seats: [] };
 
     it('should create a reservation and emit event', async () => {
+      sessionRepo.findById.mockResolvedValue(mockSession as any);
       repo.createWithLock.mockResolvedValue(mockReservation);
 
       const result = await service.create('user-1', dto);
 
+      expect(sessionRepo.findById).toHaveBeenCalledWith('session-1');
       expect(repo.createWithLock).toHaveBeenCalled();
       expect(producer.emitReservationCreated).toHaveBeenCalledWith(
         expect.objectContaining({ reservationId: 'res-1' }),
       );
       expect(result).toEqual(mockReservation);
+    });
+
+    it('should throw NotFoundException if session does not exist', async () => {
+      sessionRepo.findById.mockResolvedValue(null);
+
+      await expect(service.create('user-1', dto)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(repo.createWithLock).not.toHaveBeenCalled();
     });
 
     it('should return existing reservation if idempotencyKey matches', async () => {
