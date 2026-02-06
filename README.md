@@ -30,7 +30,7 @@ Fila durável com entrega garantida para desacoplar side effects (tracking, inva
 docker-compose up --build
 ```
 
-Isso inicia PostgreSQL, Redis, RabbitMQ e a aplicação. As migrations do Prisma rodam automaticamente no startup do container.
+Isso inicia PostgreSQL, Redis, RabbitMQ e a aplicação. As migrations do Prisma e o seed rodam automaticamente no startup do container.
 
 | Serviço             | URL                                             |
 | ------------------- | ----------------------------------------------- |
@@ -39,13 +39,11 @@ Isso inicia PostgreSQL, Redis, RabbitMQ e a aplicação. As migrations do Prisma
 | Health Check        | http://localhost:3000/health                    |
 | RabbitMQ Management | http://localhost:15672 (cinema / cinema_secret) |
 
-### Popular dados iniciais
+### Dados iniciais (Seed)
 
-O seed cria 2 usuários e 3 sessões de cinema (32 assentos cada). Roda automaticamente com:
+O seed cria 2 usuários e 3 sessões de cinema (32 assentos cada). **Roda automaticamente** no startup do container (é idempotente, não duplica dados).
 
-```bash
-npm run seed
-```
+Para rodar manualmente:
 
 | Usuário | Email           | Senha  |
 | ------- | --------------- | ------ |
@@ -248,11 +246,13 @@ curl http://localhost:3000/health
 
 ## Diferenciais Implementados
 
-- **Testes unitários (72% coverage)** — 19 suítes / 78 testes cobrindo services, controllers, repositories, producers, consumers, guards, filters e interceptors
+- **Testes unitários (72% coverage)** — 20 suítes / 79 testes cobrindo services, controllers, repositories, producers, consumers, guards, filters e interceptors
 - **Teste de concorrência e2e** — Simula N usuários disputando o mesmo assento simultaneamente via `Promise.allSettled`, valida que exatamente 1 reserva é criada e o restante recebe 409
+- **Teste do fluxo completo e2e** — Cobre registro → criação de sessão → reserva → pagamento → histórico, validando todas as transições de estado
 - **Rate Limiting** — `ThrottlerGuard` global (60 req/min por IP) via `@nestjs/throttler`
 - **Dead Letter Queue** — Consumer dedicado na fila `cinema_events.dlq` que loga mensagens não processáveis (origem, motivo, payload)
 - **Retry com exponential backoff** — Decorator `@Retry(maxAttempts, baseDelay)` aplicado em todos os consumers RabbitMQ. Delay calculado como `baseDelay * 2^attempt + jitter`. Após esgotar tentativas, a mensagem é enviada para a DLQ via `nack(msg, false, false)`
+- **Evento seat.released** — Publicado quando assentos são liberados (cancelamento ou expiração de reserva), permite integração com notificações e cache
 - **Swagger** — Documentação interativa completa em `/api-docs`
 
 ## Limitações Conhecidas
