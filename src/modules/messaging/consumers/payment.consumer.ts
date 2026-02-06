@@ -1,8 +1,9 @@
 import { Controller, Inject, Logger } from '@nestjs/common';
-import { EventPattern, Payload } from '@nestjs/microservices';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../../redis/redis.module';
 import { RABBITMQ_QUEUES, REDIS_KEYS } from '../messaging.constants';
+import { Retry } from '../../../common/decorators/retry.decorator';
 
 @Controller()
 export class PaymentConsumer {
@@ -11,6 +12,7 @@ export class PaymentConsumer {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
   @EventPattern(RABBITMQ_QUEUES.PAYMENT_CONFIRMED)
+  @Retry(3, 200)
   async handlePaymentConfirmed(
     @Payload()
     data: {
@@ -21,7 +23,9 @@ export class PaymentConsumer {
       totalInCents: number;
       seatLabels: string[];
     },
+    @Ctx() context: RmqContext,
   ) {
+    void context;
     await this.redis.del(REDIS_KEYS.reservationTracking(data.reservationId));
 
     await this.redis.set(
