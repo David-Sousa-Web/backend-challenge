@@ -253,6 +253,7 @@ curl http://localhost:3000/health
 - **Dead Letter Queue** — Consumer dedicado na fila `cinema_events.dlq` que loga mensagens não processáveis (origem, motivo, payload)
 - **Retry com exponential backoff** — Decorator `@Retry(maxAttempts, baseDelay)` aplicado em todos os consumers RabbitMQ. Delay calculado como `baseDelay * 2^attempt + jitter`. Após esgotar tentativas, a mensagem é enviada para a DLQ via `nack(msg, false, false)`
 - **Evento seat.released** — Publicado quando assentos são liberados (cancelamento ou expiração de reserva), permite integração com notificações e cache
+- **Processamento em Batch** — Eventos de expiração são agrupados e enviados em uma única mensagem, reduzindo overhead de comunicação com RabbitMQ
 - **Swagger** — Documentação interativa completa em `/api-docs`
 
 ## Limitações Conhecidas

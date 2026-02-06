@@ -64,6 +64,7 @@ describe('ReservationService', () => {
             emitReservationExpired: jest.fn(),
             emitReservationCancelled: jest.fn(),
             emitSeatReleased: jest.fn(),
+            emitSeatsReleasedBatch: jest.fn(),
           },
         },
         {
@@ -192,7 +193,7 @@ describe('ReservationService', () => {
   });
 
   describe('handleExpiredReservations', () => {
-    it('should expire reservations and emit events', async () => {
+    it('should expire reservations and emit events in batch', async () => {
       repo.expirePendingReservations.mockResolvedValue([
         { reservationId: 'res-1', sessionId: 'sess-1', seatIds: ['seat-1'] },
         { reservationId: 'res-2', sessionId: 'sess-2', seatIds: ['seat-2'] },
@@ -203,12 +204,10 @@ describe('ReservationService', () => {
       expect(producer.emitReservationExpired).toHaveBeenCalledWith({
         reservationIds: ['res-1', 'res-2'],
       });
-      expect(producer.emitSeatReleased).toHaveBeenCalledTimes(2);
-      expect(producer.emitSeatReleased).toHaveBeenCalledWith({
-        sessionId: 'sess-1',
-        seatIds: ['seat-1'],
-        reason: 'expired',
-      });
+      expect(producer.emitSeatsReleasedBatch).toHaveBeenCalledWith([
+        { sessionId: 'sess-1', seatIds: ['seat-1'], reason: 'expired' },
+        { sessionId: 'sess-2', seatIds: ['seat-2'], reason: 'expired' },
+      ]);
     });
 
     it('should not emit if no reservations expired', async () => {
@@ -217,7 +216,7 @@ describe('ReservationService', () => {
       await service.handleExpiredReservations();
 
       expect(producer.emitReservationExpired).not.toHaveBeenCalled();
-      expect(producer.emitSeatReleased).not.toHaveBeenCalled();
+      expect(producer.emitSeatsReleasedBatch).not.toHaveBeenCalled();
     });
   });
 });

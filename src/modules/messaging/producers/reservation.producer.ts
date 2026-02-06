@@ -10,7 +10,7 @@ export const RABBITMQ_CLIENT = 'RABBITMQ_CLIENT';
 export class ReservationProducer {
   private readonly logger = new Logger(ReservationProducer.name);
 
-  constructor(@Inject(RABBITMQ_CLIENT) private readonly client: ClientProxy) {}
+  constructor(@Inject(RABBITMQ_CLIENT) private readonly client: ClientProxy) { }
 
   async emitReservationCreated(payload: {
     reservationId: string;
@@ -61,4 +61,24 @@ export class ReservationProducer {
       `Evento ${RABBITMQ_QUEUES.SEAT_RELEASED} emitido: ${payload.seatIds.length} assento(s) liberado(s) [${payload.reason}]`,
     );
   }
+
+  async emitSeatsReleasedBatch(
+    events: Array<{
+      sessionId: string;
+      seatIds: string[];
+      reason: 'cancelled' | 'expired';
+    }>,
+  ) {
+    if (events.length === 0) return;
+
+    await lastValueFrom(
+      this.client.emit(RABBITMQ_QUEUES.SEAT_RELEASED, { batch: events }),
+    );
+
+    const totalSeats = events.reduce((sum, e) => sum + e.seatIds.length, 0);
+    this.logger.log(
+      `[BATCH] Evento ${RABBITMQ_QUEUES.SEAT_RELEASED} emitido: ${totalSeats} assento(s) em ${events.length} sessão(ões)`,
+    );
+  }
 }
+

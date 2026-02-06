@@ -161,13 +161,13 @@ export class ReservationService {
         reservationIds: expiredReservations.map((r) => r.reservationId),
       });
 
-      for (const expired of expiredReservations) {
-        await this.reservationProducer.emitSeatReleased({
-          sessionId: expired.sessionId,
-          seatIds: expired.seatIds,
-          reason: 'expired',
-        });
-      }
+      await this.reservationProducer.emitSeatsReleasedBatch(
+        expiredReservations.map((r) => ({
+          sessionId: r.sessionId,
+          seatIds: r.seatIds,
+          reason: 'expired' as const,
+        })),
+      );
     }
   }
 }
