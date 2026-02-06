@@ -6,6 +6,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { configs, validate, env } from './config';
 import { Environment } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { SessionModule } from './modules/session/session.module';
 import { ReservationModule } from './modules/reservation/reservation.module';
@@ -39,6 +40,7 @@ import { AppService } from './app.service';
     ScheduleModule.forRoot(),
 
     PrismaModule,
+    RedisModule,
 
     AuthModule,
     SessionModule,
