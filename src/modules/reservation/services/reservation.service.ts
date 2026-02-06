@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import Redis from 'ioredis';
-import Redlock from 'redlock';
+import Redlock, { ExecutionError } from 'redlock';
 import { REDIS_CLIENT } from '../../../redis/redis.module';
 import { env } from '../../../config/env.validation';
 import { ReservationRepository } from '../repositories/reservation.repository';
@@ -45,7 +45,14 @@ export class ReservationService {
     }
 
     const lockKey = `lock:session:${dto.sessionId}`;
-    const lock = await this.redlock.acquire([lockKey], 5000);
+    const lock = await this.redlock.acquire([lockKey], 5000).catch((error) => {
+      if (error instanceof ExecutionError) {
+        throw new ConflictException(
+          'Sessão ocupada, tente novamente em instantes',
+        );
+      }
+      throw error;
+    });
 
     try {
       const expiresAt = new Date(
