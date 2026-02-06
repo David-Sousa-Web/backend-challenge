@@ -1,98 +1,262 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Cinema Tickets API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## Visão Geral
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+API REST para venda de ingressos de cinema com controle de concorrência, reserva temporária de assentos (TTL 30s), confirmação de pagamento e mensageria assíncrona. O sistema garante que nenhum assento seja vendido duas vezes, mesmo sob alta concorrência e com múltiplas instâncias da aplicação rodando simultaneamente.
 
-## Description
+## Tecnologias Escolhidas
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+**Banco de dados — PostgreSQL 16**
 
-## Project setup
+Banco relacional com transactions ACID e suporte nativo a `SELECT ... FOR UPDATE` (lock pessimista por row). Essencial para garantir atomicidade na reserva e pagamento de assentos. Combinado com Prisma 7 como ORM para migrations automáticas e interactive transactions.
 
-```bash
-$ npm install
-```
+**Cache e lock distribuído — Redis 7**
 
-## Compile and run the project
+Usado em três frentes: (1) lock distribuído via Redlock para serializar reservas concorrentes na mesma sessão, (2) tracking de reservas com TTL para rastreamento em tempo real, e (3) invalidação de cache de disponibilidade de assentos. Redis é in-memory, o que torna o lock muito mais barato que contenção direta no Postgres.
+
+**Mensageria — RabbitMQ 3**
+
+Fila durável com entrega garantida para desacoplar side effects (tracking, invalidação de cache, geração de ingressos digitais) do fluxo principal. Inclui Dead Letter Queue para mensagens que falham no processamento. A distribuição round-robin entre consumers garante que cada evento seja processado por exatamente uma instância.
+
+## Como Executar
+
+### Pré-requisitos
+
+- Docker e Docker Compose
+
+### Subir o ambiente
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+docker-compose up --build
 ```
 
-## Run tests
+Isso inicia PostgreSQL, Redis, RabbitMQ e a aplicação. As migrations do Prisma rodam automaticamente no startup do container.
+
+| Serviço | URL |
+|---|---|
+| API | http://localhost:3000 |
+| Swagger | http://localhost:3000/api-docs |
+| Health Check | http://localhost:3000/health |
+| RabbitMQ Management | http://localhost:15672 (cinema / cinema_secret) |
+
+### Popular dados iniciais
+
+O seed cria 2 usuários e 3 sessões de cinema (32 assentos cada). Roda automaticamente com:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run seed
 ```
 
-## Deployment
+| Usuário | Email | Senha |
+|---|---|---|
+| Alice | alice@email.com | 123456 |
+| Bob | bob@email.com | 123456 |
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+| Sessão | Sala | Horário | Preço |
+|---|---|---|---|
+| Vingadores: Ultimato | Sala 1 | 10/02/2026 19:00 | R$ 25,00 |
+| Matrix Resurrections | Sala 2 | 10/02/2026 21:00 | R$ 30,00 |
+| Interstellar | Sala 3 | 11/02/2026 15:00 | R$ 20,00 |
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Executar testes
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run test
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Estratégias Implementadas
 
-## Resources
+### Como resolvi race conditions
 
-Check out a few resources that may come in handy when working with NestJS:
+Dupla camada de proteção — Redlock no Redis + lock pessimista no PostgreSQL.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+**Camada 1 — Redlock (Redis)**
 
-## Support
+Antes de acessar o banco, a aplicação adquire um lock distribuído por sessão:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```
+lock:session:{sessionId} → TTL 5s, 3 retries, 200ms delay + 100ms jitter
+```
 
-## Stay in touch
+Apenas 1 request por sessão passa por vez. Os demais esperam no Redis, que é ordens de grandeza mais rápido que contenção no Postgres.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+**Camada 2 — SELECT ... FOR UPDATE (PostgreSQL)**
 
-## License
+Dentro de uma interactive transaction, as rows dos assentos são travadas:
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```sql
+SELECT id, status FROM seats
+WHERE id IN ($1, $2) AND session_id = $3
+ORDER BY id
+FOR UPDATE
+```
+
+Se o Redlock falhar (Redis fora do ar, por exemplo), o Postgres ainda garante que dois requests não modifiquem o mesmo assento simultaneamente.
+
+Adicionalmente, o header `Idempotency-Key` na criação de reservas previne duplicatas em caso de retry do cliente.
+
+### Como garanti coordenação entre múltiplas instâncias
+
+- **Redlock** opera sobre o Redis compartilhado — todas as instâncias competem pelo mesmo lock, independente de qual recebe o request
+- **RabbitMQ** distribui mensagens round-robin entre consumers — cada evento é processado por exatamente uma instância
+- **Cron de expiração** roda em cada instância, mas a query SQL usa uma transaction atômica (`UPDATE ... WHERE status = 'PENDING' AND expires_at < now()`) — não há risco de expirar a mesma reserva duas vezes
+
+### Como preveni deadlocks
+
+Seat IDs são **ordenados** (`[...seatIds].sort()`) antes de qualquer operação de lock. Se Usuário A quer assentos [3, 1] e Usuário B quer [1, 3], ambos travam na ordem [1, 3] — nunca em ordens opostas. Isso elimina a possibilidade de deadlock por inversão de ordem de aquisição de locks.
+
+## Endpoints da API
+
+Todos os endpoints (exceto auth e health) exigem header `Authorization: Bearer <JWT>`.
+
+A documentação interativa completa está disponível em http://localhost:3000/api-docs (Swagger).
+
+### Auth
+
+**Registrar usuário**
+
+```bash
+curl -X POST http://localhost:3000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Alice", "email": "alice@email.com", "password": "123456"}'
+```
+
+**Login**
+
+```bash
+curl -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@email.com", "password": "123456"}'
+# Resposta: { "access_token": "eyJhbG..." }
+```
+
+### Sessions
+
+**Criar sessão** — `POST /sessions`
+
+```bash
+curl -X POST http://localhost:3000/sessions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -d '{
+    "movieTitle": "Matrix",
+    "room": "Sala 2",
+    "startsAt": "2026-03-15T20:00:00.000Z",
+    "ticketPriceInCents": 3000,
+    "seats": ["A1","A2","A3","A4","B1","B2","B3","B4","C1","C2","C3","C4","D1","D2","D3","D4"]
+  }'
+```
+
+**Listar sessões** — `GET /sessions`
+
+```bash
+curl http://localhost:3000/sessions -H "Authorization: Bearer <TOKEN>"
+```
+
+**Detalhes de uma sessão** — `GET /sessions/:id`
+
+```bash
+curl http://localhost:3000/sessions/<SESSION_ID> -H "Authorization: Bearer <TOKEN>"
+```
+
+**Todos os assentos** — `GET /sessions/:id/seats`
+
+```bash
+curl http://localhost:3000/sessions/<SESSION_ID>/seats -H "Authorization: Bearer <TOKEN>"
+```
+
+**Assentos disponíveis** — `GET /sessions/:id/seats/available`
+
+```bash
+curl http://localhost:3000/sessions/<SESSION_ID>/seats/available -H "Authorization: Bearer <TOKEN>"
+```
+
+### Reservations
+
+**Reservar assentos** — `POST /reservations` (TTL 30s, suporta `Idempotency-Key` header)
+
+```bash
+curl -X POST http://localhost:3000/reservations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Idempotency-Key: minha-chave-unica" \
+  -d '{"sessionId": "<SESSION_ID>", "seatIds": ["<SEAT_ID_1>", "<SEAT_ID_2>"]}'
+```
+
+**Cancelar reserva** — `PATCH /reservations/:id/cancel`
+
+```bash
+curl -X PATCH http://localhost:3000/reservations/<RESERVATION_ID>/cancel \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+**Minhas reservas** — `GET /reservations/my`
+
+```bash
+curl http://localhost:3000/reservations/my -H "Authorization: Bearer <TOKEN>"
+```
+
+**Detalhes de uma reserva** — `GET /reservations/:id`
+
+```bash
+curl http://localhost:3000/reservations/<RESERVATION_ID> -H "Authorization: Bearer <TOKEN>"
+```
+
+### Payments
+
+**Confirmar pagamento** — `POST /payments/confirm`
+
+```bash
+curl -X POST http://localhost:3000/payments/confirm \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -d '{"reservationId": "<RESERVATION_ID>"}'
+```
+
+**Histórico de compras** — `GET /payments/history`
+
+```bash
+curl http://localhost:3000/payments/history -H "Authorization: Bearer <TOKEN>"
+```
+
+**Detalhes de uma venda** — `GET /payments/:id`
+
+```bash
+curl http://localhost:3000/payments/<SALE_ID> -H "Authorization: Bearer <TOKEN>"
+```
+
+### Health
+
+```bash
+curl http://localhost:3000/health
+# Resposta: { "status": "ok", "postgres": "connected", "redis": "connected" }
+```
+
+## Decisões Técnicas
+
+1. **Dupla camada de lock (Redlock + FOR UPDATE)** — Redlock sozinho não é suficiente porque Martin Kleppmann demonstrou que ele pode falhar em cenários de clock drift. O `SELECT ... FOR UPDATE` no Postgres funciona como safety net. A combinação garante consistência mesmo se o Redis cair.
+
+2. **Repository Pattern com abstração** — Cada módulo define uma abstract class como contrato e uma implementação Prisma concreta. O service depende da abstração, não do ORM. Permite trocar a persistência ou mockar em testes sem alterar lógica de negócio.
+
+3. **Transação síncrona no pagamento** — A confirmação de pagamento (atualizar reserva → marcar assentos como SOLD → criar Sale) é uma única transaction no Postgres, não um fluxo via eventos. Eventos são emitidos depois do commit para side effects assíncronos (tracking, ingresso digital). Isso garante que o estado da compra seja sempre consistente.
+
+4. **Validação de environment no startup** — `class-validator` valida todas as variáveis de ambiente no boot da aplicação. Se alguma estiver faltando ou inválida, a app não sobe (fail-fast). O objeto `env` tipado é exportado como single source of truth — nenhum arquivo acessa `process.env` diretamente.
+
+5. **Hybrid application (HTTP + RabbitMQ)** — A app sobe como servidor HTTP e consumer RabbitMQ no mesmo processo via `startAllMicroservices()`. Um único container faz tudo, simplificando deploy e operação sem abrir mão do processamento assíncrono.
+
+## Limitações Conhecidas
+
+- **Testes** — Não foram implementados testes unitários ou de integração além do spec básico. Com mais tempo, priorizaria testes no `ReservationService` (mock do Redlock + repository) e um e2e simulando concorrência real com `Promise.all`.
+
+- **Precisão da expiração** — O cron roda a cada 10 segundos, então uma reserva pode levar até ~40s para expirar (30s de TTL + 10s do intervalo do cron). Em produção, Redis keyspace notifications ou um scheduler mais granular resolveriam.
+
+- **Retry nos producers** — Se o `emit` para o RabbitMQ falhar, a exceção sobe para o caller. Não há retry com backoff implementado.
+
+## Melhorias Futuras
+
+- **Testes de concorrência** — `Promise.all` com N requests simultâneos para validar que apenas um consegue reservar o mesmo assento
+- **Redis keyspace notifications** — Expiração instantânea de reservas sem depender de polling via cron
+- **Retry com exponential backoff** — Nos producers RabbitMQ para resiliência em falhas temporárias
+- **WebSocket** — Notificar clientes em tempo real sobre mudanças de disponibilidade de assentos
+- **Cache layer** — Servir `GET /sessions/:id/seats/available` direto do Redis, invalidando via consumers
+- **Métricas** — Prometheus + Grafana para monitorar filas, latência e taxa de erros
