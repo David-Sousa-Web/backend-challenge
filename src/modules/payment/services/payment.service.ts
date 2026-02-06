@@ -6,6 +6,7 @@ import {
 import { PaymentRepository } from '../repositories/payment.repository';
 import { ReservationRepository } from '../../reservation/repositories/reservation.repository';
 import { SessionRepository } from '../../session/repositories/session.repository';
+import { PaymentProducer } from '../../messaging/producers/payment.producer';
 import { ConfirmPaymentDto } from '../dtos/confirm-payment.dto';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class PaymentService {
     private readonly paymentRepository: PaymentRepository,
     private readonly reservationRepository: ReservationRepository,
     private readonly sessionRepository: SessionRepository,
+    private readonly paymentProducer: PaymentProducer,
   ) {}
 
   async confirmPayment(userId: string, dto: ConfirmPaymentDto) {
@@ -40,6 +42,15 @@ export class PaymentService {
       reservationId: dto.reservationId,
       userId,
       totalInCents,
+    });
+
+    await this.paymentProducer.emitPaymentConfirmed({
+      saleId: sale.id,
+      reservationId: dto.reservationId,
+      userId,
+      sessionId: reservation.sessionId,
+      totalInCents,
+      seatLabels: reservation.reservationSeats.map((rs) => rs.seat.label),
     });
 
     return sale;

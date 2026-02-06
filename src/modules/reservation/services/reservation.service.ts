@@ -12,6 +12,7 @@ import Redlock from 'redlock';
 import { REDIS_CLIENT } from '../../../redis/redis.module';
 import { env } from '../../../config/env.validation';
 import { ReservationRepository } from '../repositories/reservation.repository';
+import { ReservationProducer } from '../../messaging/producers/reservation.producer';
 import { CreateReservationDto } from '../dtos/create-reservation.dto';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class ReservationService {
 
   constructor(
     private readonly reservationRepository: ReservationRepository,
+    private readonly reservationProducer: ReservationProducer,
     @Inject(REDIS_CLIENT) redis: Redis,
   ) {
     this.redlock = new Redlock([redis], {
@@ -62,6 +64,13 @@ export class ReservationService {
         `Reserva ${reservation.id} criada para sessão ${dto.sessionId}`,
       );
 
+      await this.reservationProducer.emitReservationCreated({
+        reservationId: reservation.id,
+        userId,
+        sessionId: dto.sessionId,
+        seatIds: dto.seatIds,
+      });
+
       return reservation;
     } finally {
       await lock.release();
@@ -89,6 +98,13 @@ export class ReservationService {
     const cancelled = await this.reservationRepository.cancel(reservationId);
 
     this.logger.log(`Reserva ${reservationId} cancelada`);
+
+    await this.reservationProducer.emitReservationCancelled({
+      reservationId,
+      userId,
+      sessionId: cancelled.sessionId,
+      seatIds: cancelled.reservationSeats.map((rs) => rs.seatId),
+    });
 
     return cancelled;
   }
@@ -118,6 +134,10 @@ export class ReservationService {
       this.logger.log(
         `${expiredIds.length} reserva(s) expirada(s) e assentos liberados`,
       );
+
+      await this.reservationProducer.emitReservationExpired({
+        reservationIds: expiredIds,
+      });
     }
   }
 }
