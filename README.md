@@ -27,7 +27,7 @@ Fila durável com entrega garantida para desacoplar side effects (tracking, inva
 ### Subir o ambiente
 
 ```bash
-docker-compose up --build
+docker-compose up -d --build
 ```
 
 Isso inicia PostgreSQL, Redis, RabbitMQ e a aplicação. As migrations do Prisma e o seed rodam automaticamente no startup do container.
